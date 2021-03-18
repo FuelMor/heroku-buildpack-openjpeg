@@ -1,0 +1,76 @@
+#!/bin/bash
+
+indent() {
+  sed -u 's/^/       /'
+}
+
+echo "-----> Install OpenJPEG"
+
+BUILD_DIR=$1
+CACHE_DIR=$2
+ENV_DIR=$3
+
+VENDOR_DIR="$BUILD_DIR/vendor"
+INSTALL_DIR="$VENDOR_DIR/openjpeg"
+
+if [ ! -f $ENV_DIR/OPEN_JPEG_VERSION ]; then
+  echo "Error: OPEN_JPEG_VERSION env not set" | indent
+  exit 1;
+fi
+OPEN_JPEG_VERSION=$(cat $ENV_DIR/OPEN_JPEG_VERSION)
+CACHE_FILE="$CACHE_DIR/openjpeg-$OPEN_JPEG_VERSION.tar.gz"
+
+if [ ! -f $CACHE_FILE ]; then
+  # install openjpeg
+  OPEN_JPEG_FILE="openjpeg-$OPEN_JPEG_VERSION-linux-x86_64.tar.gz"
+  OPEN_JPEG_DIR=$OPEN_JPEG_FILE
+  OPEN_JPEG_URL="https://github.com/uclouvain/openjpeg/releases/download/$OPEN_JPEG_VERSION/$OPEN_JPEG_FILE"
+
+  echo "-----> Downloading OpenJPEG from $OPEN_JPEG_URL"
+  wget $OPEN_JPEG_URL -P $BUILD_DIR | indent
+
+  echo "-----> Extracting OpenJPEG from $BUILD_DIR/$OPEN_JPEG_FILE"
+  if [ ! -f $BUILD_DIR/$OPEN_JPEG_FILE ]; then
+    echo "Error: Unable to download OpenJPEG" | indent
+    ls $BUILD_DIR | indent
+    exit 1;
+  fi
+  tar xvf $BUILD_DIR/$OPEN_JPEG_FILE | indent
+
+  echo "-----> Building OpenJPEG"
+  cd $OPEN_JPEG_DIR
+  export CPPFLAGS="-I$INSTALL_DIR/include"
+  export LDFLAGS="-L$INSTALL_DIR/lib"
+  cmake -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR
+  make && make install
+  cd ..
+  rm -rf $OPEN_JPEG_DIR
+
+  # cache for future deploys
+  echo "-----> Caching OpenJPEG installation"
+  cd $VENDOR_DIR
+  REL_INSTALL_DIR="openjpeg"
+  tar czf $REL_INSTALL_DIR.tar.gz $REL_INSTALL_DIR
+
+  if [ ! -d $CACHE_DIR ]; then
+    mkdir -p $CACHE_DIR
+  fi
+
+  mv $REL_INSTALL_DIR.tar.gz $CACHE_FILE
+
+else
+  # cache exists, extract it
+  echo "-----> Extracting OpenJPEG $CACHE_FILE => $VENDOR_DIR"
+  mkdir -p $VENDOR_DIR
+  tar xzf $CACHE_FILE -C $VENDOR_DIR
+fi
+
+# update PATH and LD_LIBRARY_PATH
+echo "-----> Updating environment variables"
+PROFILE_PATH="$BUILD_DIR/.profile.d/openjpeg.sh"
+ACTUAL_INSTALL_PATH="$HOME/vendor/openjpeg"
+mkdir -p $(dirname $PROFILE_PATH)
+echo "export PATH=$ACTUAL_INSTALL_PATH/bin:\$PATH" >> $PROFILE_PATH
+echo "export LD_LIBRARY_PATH=$ACTUAL_INSTALL_PATH/lib:\$LD_LIBRARY_PATH:/usr/local/lib" >> $PROFILE_PATH
+echo "export OPEN_JPEG_CONFIGURE_PATH=$ACTUAL_INSTALL_PATH" >> $PROFILE_PATH
+echo "-----> Done updating environment variables. All set for OpenJPEG."

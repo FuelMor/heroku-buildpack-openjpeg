@@ -1,0 +1,4 @@
+#!/bin/bash
+
+echo "OpenJPEG"
+exit 0
